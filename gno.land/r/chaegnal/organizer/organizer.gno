@@ -102,7 +102,7 @@ func displayGroupDetails(key string, value interface{}, out *string) {
 	*out += "\n"
 }
 
-func resolveAdressName(addr std.Address) string {
+func ResolveAddressName(addr std.Address) string {
 	user := users.ResolveAddress(addr)
 	if user != nil {
 		return user.Name()
@@ -128,7 +128,7 @@ func displayAllExistingGroups(pageNumber, pageSize int) string {
 			continue
 		}
 
-		author := resolveAdressName(group.Owner.Owner())
+		author := ResolveAddressName(group.Owner.Owner())
 
 		out += md.H3("Group: "+group.Title+" - By: "+author) + "\n"
 		out += md.Paragraph("Number of friends in the group: "+strconv.Itoa(group.Friends.Size())) + "\n"
@@ -136,7 +136,7 @@ func displayAllExistingGroups(pageNumber, pageSize int) string {
 		out += md.HorizontalRule() + "\n"
 	}
 
-	out += page.Picker("/groups")
+	out += page.Picker("/organizer")
 
 	return out
 }
@@ -145,7 +145,7 @@ func displayJoinedGroups(caller std.Address) string {
 	var out string
 	found := false
 
-	out += md.H3("Your Joined Groups") + "\n"
+	out += md.H2("Your Joined Groups") + "\n"
 	out += "| Title | Created By | Members | Inspect |\n"
 	out += "|-------|------------|---------|---------|\n"
 
@@ -153,8 +153,9 @@ func displayJoinedGroups(caller std.Address) string {
 		group := val.(FriendGroup)
 
 		// if containsValue(group.Friends, caller.String()) || group.Owner.Owner() == caller {
-		author := resolveAdressName(group.Owner.Owner())
-		out += "| " + group.Title + " | " + author + " | " + strconv.Itoa(group.Friends.Size()) + " | " + md.Link("View Group", "/r/chaegnal/organizer/groups?groupId="+strconv.Itoa(group.ID)) + " |\n"
+		author := ResolveAddressName(group.Owner.Owner())
+		out += "| " + group.Title + " | " + author + " | " + strconv.Itoa(group.Friends.Size()) + " | " +
+			md.Link("View Group", "/r/chaegnal/organizer/group?groupId="+strconv.Itoa(group.ID)) + " |\n"
 		found = true
 		// }
 
@@ -178,6 +179,8 @@ func Render(rawURL string) string {
 
 	out += md.H1("Welcome to Friendly Organizer")
 	out += md.Paragraph("Here you can join and create Friend Group to organize your next hangout")
+
+	out += md.Paragraph(md.Link("Create New FriendGroup", txlink.Call("CreateFriendGroup", "title")))
 
 	out += displayJoinedGroups(std.PreviousRealm().Address())
 
