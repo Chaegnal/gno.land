@@ -133,7 +133,7 @@ func displayAllExistingGroups(pageNumber, pageSize int) string {
 
 		out += md.H3("Group: "+group.Title+" - By: "+author) + "\n"
 		out += md.Paragraph("Number of friends in the group: "+strconv.Itoa(group.Friends.Size())) + "\n"
-		out += md.Link("Join Group", txlink.Call("JoinFriendGroup", "groupId", strconv.Itoa(group.ID)))
+		out += md.Link("Join Group", txlink.Call("JoinFriendGroup", "groupId", strconv.Itoa(group.ID))) + "\n\n"
 		out += md.HorizontalRule() + "\n"
 	}
 
