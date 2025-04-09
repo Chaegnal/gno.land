@@ -40,7 +40,8 @@ const (
 )
 
 var (
-	ListGroups AllGroups
+	ListGroups      AllGroups
+	AddressLoggedIn std.Address
 )
 
 func init() {
@@ -141,7 +142,7 @@ func displayAllExistingGroups(pageNumber, pageSize int) string {
 	return out
 }
 
-func displayJoinedGroups(caller std.Address) string {
+func displayJoinedGroups() string {
 	var out string
 	found := false
 
@@ -152,12 +153,12 @@ func displayJoinedGroups(caller std.Address) string {
 	ListGroups.Groups.Iterate("", "", func(key string, val any) bool {
 		group := val.(FriendGroup)
 
-		// if containsValue(group.Friends, caller.String()) || group.Owner.Owner() == caller {
-		author := ResolveAddressName(group.Owner.Owner())
-		out += "| " + group.Title + " | " + author + " | " + strconv.Itoa(group.Friends.Size()) + " | " +
-			md.Link("View Group", "/r/chaegnal/organizer/group?groupId="+strconv.Itoa(group.ID)) + " |\n"
-		found = true
-		// }
+		if containsValue(group.Friends, AddressLoggedIn.String()) {
+			author := ResolveAddressName(group.Owner.Owner())
+			out += "| " + group.Title + " | " + author + " | " + strconv.Itoa(group.Friends.Size()) + " | " +
+				md.Link("View", "/r/chaegnal/organizer/group?groupId="+strconv.Itoa(group.ID)) + " |\n"
+			found = true
+		}
 
 		return false
 	})
@@ -169,6 +170,14 @@ func displayJoinedGroups(caller std.Address) string {
 	return out
 }
 
+func Login() {
+	AddressLoggedIn = std.OriginCaller()
+}
+
+func Logout() {
+	AddressLoggedIn = ""
+}
+
 func Render(rawURL string) string {
 	var out string
 
@@ -178,15 +187,23 @@ func Render(rawURL string) string {
 	}
 
 	out += md.H1("Welcome to Friendly Organizer")
-	out += md.Paragraph("Here you can join and create Friend Group to organize your next hangout")
+	out += md.Paragraph("Here you can join and create FriendGroups to organize your next hangout")
 
 	out += md.Paragraph(md.Link("Create New FriendGroup", txlink.Call("CreateFriendGroup", "title")))
 
-	out += displayJoinedGroups(std.PreviousRealm().Address())
+	if AddressLoggedIn == "" {
+		out += md.H2(md.Link("Login to see your joined group", txlink.Call("Login")))
+	} else {
+		out += displayJoinedGroups()
+	}
 
-	out += md.H2("List of Friend Groups")
+	out += md.H2("List of FriendGroups")
 
 	out += displayAllExistingGroups(pageNumber, size)
+
+	if AddressLoggedIn != "" {
+		out += md.Paragraph(md.Link("Logout", txlink.Call("Logout")))
+	}
 
 	return out
 }
