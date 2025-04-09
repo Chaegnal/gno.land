@@ -42,6 +42,15 @@ func Render(url string) string {
 	out += md.H1("Group: " + group.Title)
 	out += md.H2("Created by: " + organizer.ResolveAddressName(group.Owner.Owner()))
 	out += md.Paragraph("Number of friends: " + strconv.Itoa(group.Friends.Size()))
+	out += md.HorizontalRule()
+
+	out += md.H2("Active DAOs")
+	out += md.HorizontalRule()
+
+	out += md.H2("Closed DAOs")
+	out += md.HorizontalRule()
+
+	out += md.Paragraph(md.Link("Go back", "/r/chaegnal/organizer"))
 
 	return out
 }
