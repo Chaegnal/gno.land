@@ -15,7 +15,6 @@ type Proposal struct {
 	Options     []string
 	Votes       *avl.Tree
 	Voters      *avl.Tree
-	Deadline    string
 	Active      bool
 	Winner      string
 }
@@ -72,7 +71,7 @@ func (dao *DAO) isAdmin(adr std.Address) bool {
 	return isAdmin
 }
 
-func (dao *DAO) CreateProposals(title, desc, deadline string, options []string) {
+func (dao *DAO) CreateProposals(title, desc string, options []string) {
 	if !dao.isAdmin(std.PreviousRealm().Address()) {
 		panic("You cannot create proposals")
 	}
@@ -85,11 +84,17 @@ func (dao *DAO) CreateProposals(title, desc, deadline string, options []string) 
 		Options:     options,
 		Votes:       avl.NewTree(),
 		Voters:      avl.NewTree(),
-		Deadline:    deadline,
 		Active:      true,
 	}
 
 	dao.Proposals.Set(strconv.Itoa(dao.Proposals.Size()+1), newProposal)
+}
+
+func (dao *DAO) hasEveryoneVoted(vote Proposal) bool {
+	if vote.Voters.Size() == dao.Whitelist.Size() {
+		return true
+	}
+	return false
 }
 
 func (dao *DAO) VoteProposal(voteId, choiceIdx int) {
@@ -100,7 +105,7 @@ func (dao *DAO) VoteProposal(voteId, choiceIdx int) {
 		panic("You are not whitelisted.")
 	}
 
-	raw, ok := dao.Proposals.Get(strconv.Itoa(choiceIdx))
+	raw, ok := dao.Proposals.Get(strconv.Itoa(voteId))
 	if !ok {
 		panic("Proposal does not exist.")
 	}
@@ -116,7 +121,7 @@ func (dao *DAO) VoteProposal(voteId, choiceIdx int) {
 		panic("Already voted.")
 	}
 
-	if choiceIdx < 0 || choiceIdx > len(vote.Options) {
+	if choiceIdx < 0 || choiceIdx >= len(vote.Options) {
 		panic("Invalid voting choice.")
 	}
 
@@ -127,6 +132,10 @@ func (dao *DAO) VoteProposal(voteId, choiceIdx int) {
 	vote.Voters.Set(caller.String(), choiceIdx)
 
 	dao.Proposals.Set(strconv.Itoa(voteId), vote)
+
+	if dao.hasEveryoneVoted(vote) {
+		dao.closeProposal(voteId)
+	}
 }
 
 func (dao *DAO) closeProposal(id int) {
