@@ -30,12 +30,12 @@ type DAO struct {
 }
 
 const (
-	admin  = "admin"
-	member = "member"
+	adminRank  = "admin"
+	memberRank = "member"
 )
 
-func (dao *DAO) whitelistMember(adr std.Address, rank string) {
-	if rank != admin || rank != member {
+func (dao *DAO) WhitelistMember(adr std.Address, rank string) {
+	if rank != adminRank || rank != memberRank {
 		panic("Rank does not exist.")
 	}
 
@@ -47,7 +47,7 @@ func (dao *DAO) whitelistMember(adr std.Address, rank string) {
 	dao.Whitelist.Set(strconv.Itoa(dao.Whitelist.Size()+1), newWhitelisted)
 }
 
-func (dao *DAO) isMember(adr std.Address) (WhitelistedUser, bool) {
+func (dao *DAO) IsMember(adr std.Address) (WhitelistedUser, bool) {
 	raw, ok := dao.Whitelist.Get(adr.String())
 	if !ok {
 		return WhitelistedUser{}, false
@@ -56,23 +56,70 @@ func (dao *DAO) isMember(adr std.Address) (WhitelistedUser, bool) {
 	return raw.(WhitelistedUser), true
 }
 
-func (dao *DAO) isAdmin(adr std.Address) bool {
+func (dao *DAO) IsAdmin(adr std.Address) bool {
 	isAdmin := false
 
-	member, isMember := dao.isMember(adr)
+	member, isMember := dao.IsMember(adr)
 	if !isMember {
 		return false
 	}
 
-	if member.Rank == admin {
+	if member.Rank == adminRank {
 		isAdmin = true
 	}
 
 	return isAdmin
 }
 
+func (dao *DAO) SetAdmin(adr std.Address) {
+	member, ok := dao.IsMember(adr)
+
+	if dao.IsAdmin(adr) {
+		panic("Member is already an admin.")
+	}
+
+	if !ok {
+		panic("Not a member.")
+	}
+
+	member.Rank = adminRank
+	dao.Whitelist.Set(adr.String(), member)
+}
+
+func (dao *DAO) RemoveAdminRank(adr std.Address) {
+	member, ok := dao.IsMember(adr)
+
+	if !dao.IsAdmin(adr) {
+		panic("Member is not an admin.")
+	}
+
+	if !ok {
+		panic("Not a member.")
+	}
+
+	member.Rank = memberRank
+	dao.Whitelist.Set(adr.String(), member)
+}
+
+func (dao *DAO) RemoveMember(adr std.Address) {
+	if !dao.IsAdmin(std.PreviousRealm().Address()) {
+		panic("Must be an admin to remove a member.")
+	}
+
+	member, ok := dao.IsMember(adr)
+	if !ok {
+		panic("Not a member.")
+	}
+
+	if member.Address == std.PreviousRealm().Address() {
+		panic("You cannot remove yourself.")
+	}
+
+	dao.Whitelist.Remove(adr.String())
+}
+
 func (dao *DAO) CreateProposals(title, desc string, options []string) {
-	if !dao.isAdmin(std.PreviousRealm().Address()) {
+	if !dao.IsAdmin(std.PreviousRealm().Address()) {
 		panic("You cannot create proposals")
 	}
 
@@ -100,7 +147,7 @@ func (dao *DAO) hasEveryoneVoted(vote Proposal) bool {
 func (dao *DAO) VoteProposal(voteId, choiceIdx int) {
 	caller := std.PreviousRealm().Address()
 
-	_, ok := dao.isMember(caller)
+	_, ok := dao.IsMember(caller)
 	if !ok {
 		panic("You are not whitelisted.")
 	}
@@ -134,11 +181,11 @@ func (dao *DAO) VoteProposal(voteId, choiceIdx int) {
 	dao.Proposals.Set(strconv.Itoa(voteId), vote)
 
 	if dao.hasEveryoneVoted(vote) {
-		dao.closeProposal(voteId)
+		dao.CloseProposal(voteId)
 	}
 }
 
-func (dao *DAO) closeProposal(id int) {
+func (dao *DAO) CloseProposal(id int) {
 	var winnerVote int
 	var winnerIdx int
 
@@ -152,7 +199,7 @@ func (dao *DAO) closeProposal(id int) {
 		panic("Proposal already closed.")
 	}
 
-	ok = dao.isAdmin(std.PreviousRealm().Address())
+	ok = dao.IsAdmin(std.PreviousRealm().Address())
 	if !ok {
 		panic("You cannot close a proposal.")
 	}
