@@ -25,8 +25,9 @@ type WhitelistedUser struct {
 }
 
 type DAO struct {
-	Proposals *avl.Tree
-	Whitelist *avl.Tree
+	Proposals        *avl.Tree
+	Whitelist        *avl.Tree
+	AwaitingApproval *avl.Tree
 }
 
 const (
@@ -34,17 +35,60 @@ const (
 	memberRank = "member"
 )
 
-func (dao *DAO) WhitelistMember(adr std.Address, rank string) {
-	if rank != adminRank || rank != memberRank {
-		panic("Rank does not exist.")
+func NewDAO() *DAO {
+	return &DAO{
+		Proposals:        avl.NewTree(),
+		Whitelist:        avl.NewTree(),
+		AwaitingApproval: avl.NewTree(),
+	}
+}
+
+func (dao *DAO) PendingApproval(adr std.Address) {
+	_, ok := dao.AwaitingApproval.Get(adr.String())
+	if ok {
+		panic("Already awaiting approval.")
+	}
+
+	_, ok = dao.IsMember(adr)
+	if ok {
+		panic("Already whitelisted.")
+	}
+
+	dao.AwaitingApproval.Set(adr.String(), true)
+}
+
+func (dao *DAO) WhitelistingAwaitingApproval(adr std.Address) {
+	caller := std.PreviousRealm().Address()
+	if !dao.IsAdmin(caller) {
+		panic("Only admins can whitelist members.")
+	}
+
+	_, ok := dao.AwaitingApproval.Get(adr.String())
+	if !ok {
+		panic("This address is not awaiting approval.")
+	}
+
+	_, isMember := dao.IsMember(adr)
+	if isMember {
+		panic("Already whitelisted.")
 	}
 
 	newWhitelisted := WhitelistedUser{
 		Address: adr,
-		Rank:    rank,
+		Rank:    memberRank,
 	}
 
-	dao.Whitelist.Set(strconv.Itoa(dao.Whitelist.Size()+1), newWhitelisted)
+	dao.Whitelist.Set(adr.String(), newWhitelisted)
+	dao.AwaitingApproval.Remove(adr.String())
+}
+
+func (dao *DAO) WhitelistMember(adr std.Address) {
+	newWhitelisted := WhitelistedUser{
+		Address: adr,
+		Rank:    memberRank,
+	}
+
+	dao.Whitelist.Set(adr.String(), newWhitelisted)
 }
 
 func (dao *DAO) IsMember(adr std.Address) (WhitelistedUser, bool) {
@@ -116,6 +160,18 @@ func (dao *DAO) RemoveMember(adr std.Address) {
 	}
 
 	dao.Whitelist.Remove(adr.String())
+}
+
+func (dao *DAO) GetWhitelisted() *avl.Tree {
+	return dao.Whitelist
+}
+
+func (dao *DAO) GetAwaiting() *avl.Tree {
+	return dao.AwaitingApproval
+}
+
+func (dao *DAO) GetProposals() *avl.Tree {
+	return dao.Proposals
 }
 
 func (dao *DAO) CreateProposals(title, desc string, options []string) {
