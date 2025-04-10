@@ -140,13 +140,15 @@ func displayAllExistingGroups(pageNumber, pageSize int) string {
 		out += md.H3("Group: "+group.Title+" - By: "+author) + "\n"
 		out += md.Paragraph("Number of friends in the group: "+strconv.Itoa(group.DAO.Whitelist.Size())) + "\n"
 
-		_, ok = group.DAO.IsMember(AddressLoggedIn)
-		if ok {
-			out += md.Paragraph("You already are part of this group")
-		} else if group.DAO.IsPending(AddressLoggedIn) {
-			out += md.Paragraph("You are awaiting approval for this group")
-		} else {
-			out += md.Link("Join Group", txlink.Call("JoinFriendGroup", "groupId", strconv.Itoa(group.ID))) + "\n\n"
+		if AddressLoggedIn != "" {
+			_, ok = group.DAO.IsMember(AddressLoggedIn)
+			if ok {
+				out += md.Paragraph("You already are part of this group")
+			} else if group.DAO.IsPending(AddressLoggedIn) {
+				out += md.Paragraph("You are awaiting approval for this group")
+			} else {
+				out += md.Link("Join Group", txlink.Call("JoinFriendGroup", "groupId", strconv.Itoa(group.ID))) + "\n\n"
+			}
 		}
 
 		out += md.HorizontalRule() + "\n"
@@ -157,7 +159,7 @@ func displayAllExistingGroups(pageNumber, pageSize int) string {
 	return out
 }
 
-func displayGroupInfo(group FriendGroup, table mdtable.Table, hasJoined bool) string {
+func displayGroupInfo(group FriendGroup, table *mdtable.Table, hasJoined bool) {
 	author := ResolveAddressName(group.Owner.Owner())
 	var view string
 
@@ -167,10 +169,7 @@ func displayGroupInfo(group FriendGroup, table mdtable.Table, hasJoined bool) st
 		view = "You cannot view group yet"
 	}
 
-	table.Append([]string{group.Title, author, strconv.Itoa(group.DAO.Whitelist.Size()),
-		view})
-
-	return table.String()
+	table.Append([]string{group.Title, author, strconv.Itoa(group.DAO.Whitelist.Size()), view})
 }
 
 func displayJoinedGroups() string {
@@ -178,7 +177,7 @@ func displayJoinedGroups() string {
 	found := false
 
 	out += md.H2("Your Joined Groups") + "\n"
-	table := mdtable.Table{
+	table := &mdtable.Table{
 		Headers: []string{"Title", "Created By", "Members", "Inspect"},
 	}
 
@@ -187,7 +186,7 @@ func displayJoinedGroups() string {
 
 		_, ok := group.DAO.IsMember(AddressLoggedIn)
 		if ok {
-			out += displayGroupInfo(group, table, true)
+			displayGroupInfo(group, table, true)
 			found = true
 		}
 
@@ -196,6 +195,8 @@ func displayJoinedGroups() string {
 
 	if !found {
 		out = md.Paragraph("You haven't joined any groups yet.")
+	} else {
+		out += table.String()
 	}
 
 	return out
@@ -205,7 +206,7 @@ func displayPendingApproval() string {
 	var out string
 	found := false
 
-	table := mdtable.Table{
+	table := &mdtable.Table{
 		Headers: []string{"Title", "Created By", "Members", "Inspect"},
 	}
 
@@ -213,7 +214,7 @@ func displayPendingApproval() string {
 		group := val.(FriendGroup)
 
 		if group.DAO.IsPending(AddressLoggedIn) {
-			out = displayGroupInfo(group, table, false)
+			displayGroupInfo(group, table, false)
 			found = true
 		}
 		return false
@@ -221,6 +222,8 @@ func displayPendingApproval() string {
 
 	if !found {
 		out = md.Paragraph("No pending join request.")
+	} else {
+		out += table.String()
 	}
 
 	return out
