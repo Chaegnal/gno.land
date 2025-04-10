@@ -4,10 +4,13 @@ import (
 	"std"
 	"strconv"
 
+	"gno.land/p/chaegnal/dao"
+
 	"gno.land/p/demo/avl"
 	"gno.land/p/demo/avl/pager"
 	"gno.land/p/demo/ownable"
 	"gno.land/p/moul/md"
+	"gno.land/p/moul/mdtable"
 	"gno.land/p/moul/txlink"
 	"gno.land/r/sys/users"
 )
@@ -17,10 +20,10 @@ type AllGroups struct {
 }
 
 type FriendGroup struct {
-	ID      int
-	Title   string
-	Owner   *ownable.Ownable
-	Friends *avl.Tree
+	ID    int
+	Title string
+	Owner *ownable.Ownable
+	DAO   *dao.DAO
 }
 
 type Activity struct {
@@ -51,14 +54,16 @@ func init() {
 func CreateFriendGroup(title string) {
 	caller := std.PreviousRealm().Address()
 
-	newGroup := FriendGroup{
-		ID:      ListGroups.Groups.Size() + 1,
-		Title:   title,
-		Owner:   ownable.NewWithAddress(caller),
-		Friends: avl.NewTree(),
-	}
+	newDao := dao.NewDAO()
+	newDao.WhitelistMember(caller)
+	newDao.SetAdmin(caller)
 
-	newGroup.Friends.Set(strconv.Itoa(newGroup.Friends.Size()+1), caller)
+	newGroup := FriendGroup{
+		ID:    ListGroups.Groups.Size() + 1,
+		Title: title,
+		Owner: ownable.NewWithAddress(caller),
+		DAO:   newDao,
+	}
 
 	ListGroups.Groups.Set(strconv.Itoa(newGroup.ID), newGroup)
 }
@@ -78,7 +83,7 @@ func containsValue(tree *avl.Tree, value string) bool {
 	return found
 }
 
-func JoinFriendGroup(groupId int) {
+func AskJoinFriendGroup(groupId int) {
 	txSender := std.OriginCaller()
 
 	raw, exists := ListGroups.Groups.Get(strconv.Itoa(groupId))
@@ -88,16 +93,17 @@ func JoinFriendGroup(groupId int) {
 
 	group := raw.(FriendGroup)
 
-	if containsValue(group.Friends, txSender.String()) {
+	_, ok := group.DAO.IsMember(txSender)
+	if ok {
 		panic("You are already part of this FriendGroup")
 	}
 
-	group.Friends.Set(strconv.Itoa(group.Friends.Size()+1), txSender)
+	group.DAO.PendingApproval(txSender)
 	ListGroups.Groups.Set(strconv.Itoa(groupId), group)
 }
 
 func displayGroupDetails(key string, value interface{}, out *string) {
-	group := value.(*FriendGroup)
+	group := value.(FriendGroup)
 
 	*out += md.Paragraph("Group Title: " + group.Title + " created by: " + group.Owner.Owner().String())
 	*out += "\n"
@@ -132,8 +138,17 @@ func displayAllExistingGroups(pageNumber, pageSize int) string {
 		author := ResolveAddressName(group.Owner.Owner())
 
 		out += md.H3("Group: "+group.Title+" - By: "+author) + "\n"
-		out += md.Paragraph("Number of friends in the group: "+strconv.Itoa(group.Friends.Size())) + "\n"
-		out += md.Link("Join Group", txlink.Call("JoinFriendGroup", "groupId", strconv.Itoa(group.ID))) + "\n\n"
+		out += md.Paragraph("Number of friends in the group: "+strconv.Itoa(group.DAO.Whitelist.Size())) + "\n"
+
+		_, ok = group.DAO.IsMember(AddressLoggedIn)
+		if ok {
+			out += md.Paragraph("You already are part of this group")
+		} else if group.DAO.IsPending(AddressLoggedIn) {
+			out += md.Paragraph("You are awaiting approval for this group")
+		} else {
+			out += md.Link("Join Group", txlink.Call("JoinFriendGroup", "groupId", strconv.Itoa(group.ID))) + "\n\n"
+		}
+
 		out += md.HorizontalRule() + "\n"
 	}
 
@@ -142,21 +157,37 @@ func displayAllExistingGroups(pageNumber, pageSize int) string {
 	return out
 }
 
+func displayGroupInfo(group FriendGroup, table mdtable.Table, hasJoined bool) string {
+	author := ResolveAddressName(group.Owner.Owner())
+	var view string
+
+	if hasJoined {
+		view = md.Link("View", "/r/chaegnal/organizer/group?groupId="+strconv.Itoa(group.ID))
+	} else {
+		view = "You cannot view group yet"
+	}
+
+	table.Append([]string{group.Title, author, strconv.Itoa(group.DAO.Whitelist.Size()),
+		view})
+
+	return table.String()
+}
+
 func displayJoinedGroups() string {
 	var out string
 	found := false
 
 	out += md.H2("Your Joined Groups") + "\n"
-	out += "| Title | Created By | Members | Inspect |\n"
-	out += "|-------|------------|---------|---------|\n"
+	table := mdtable.Table{
+		Headers: []string{"Title", "Created By", "Members", "Inspect"},
+	}
 
 	ListGroups.Groups.Iterate("", "", func(key string, val any) bool {
 		group := val.(FriendGroup)
 
-		if containsValue(group.Friends, AddressLoggedIn.String()) {
-			author := ResolveAddressName(group.Owner.Owner())
-			out += "| " + group.Title + " | " + author + " | " + strconv.Itoa(group.Friends.Size()) + " | " +
-				md.Link("View", "/r/chaegnal/organizer/group?groupId="+strconv.Itoa(group.ID)) + " |\n"
+		_, ok := group.DAO.IsMember(AddressLoggedIn)
+		if ok {
+			out += displayGroupInfo(group, table, true)
 			found = true
 		}
 
@@ -165,6 +196,31 @@ func displayJoinedGroups() string {
 
 	if !found {
 		out = md.Paragraph("You haven't joined any groups yet.")
+	}
+
+	return out
+}
+
+func displayPendingApproval() string {
+	var out string
+	found := false
+
+	table := mdtable.Table{
+		Headers: []string{"Title", "Created By", "Members", "Inspect"},
+	}
+
+	ListGroups.Groups.Iterate("", "", func(key string, val any) bool {
+		group := val.(FriendGroup)
+
+		if group.DAO.IsPending(AddressLoggedIn) {
+			out = displayGroupInfo(group, table, false)
+			found = true
+		}
+		return false
+	})
+
+	if !found {
+		out = md.Paragraph("No pending join request.")
 	}
 
 	return out
@@ -195,6 +251,8 @@ func Render(rawURL string) string {
 		out += md.H2(md.Link("Login to see your joined group", txlink.Call("Login")))
 	} else {
 		out += displayJoinedGroups()
+		out += md.H2("Your Pending Request")
+		out += displayPendingApproval()
 	}
 
 	out += md.H2("List of FriendGroups")
