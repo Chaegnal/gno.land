@@ -56,7 +56,7 @@ func CreateFriendGroup(title string) {
 
 	newDao := dao.NewDAO()
 	newDao.WhitelistMember(caller)
-	newDao.SetAdmin(caller)
+	newDao.DefaultAdmin(caller)
 
 	newGroup := FriendGroup{
 		ID:    ListGroups.Groups.Size() + 1,
