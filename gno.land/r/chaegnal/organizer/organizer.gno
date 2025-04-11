@@ -159,12 +159,32 @@ func displayAllExistingGroups(pageNumber, pageSize int) string {
 	return out
 }
 
+func getGroupFromId(groupId string) FriendGroup {
+	convertedId, err := strconv.Atoi(groupId)
+	if err != nil {
+		panic("Invalid ID")
+	}
+
+	raw, found := ListGroups.Groups.Get(strconv.Itoa(convertedId))
+	if !found {
+		panic("Could not find group")
+	}
+
+	return raw.(FriendGroup)
+}
+
+func LeaveGroup(groupId string) {
+	group := getGroupFromId(groupId)
+
+	group.DAO.LeaveGroup(AddressLoggedIn)
+}
+
 func displayGroupInfo(group FriendGroup, table *mdtable.Table, hasJoined bool) {
 	author := ResolveAddressName(group.Owner.Owner())
 	var view string
 
 	if hasJoined {
-		view = md.Link("View", "/r/chaegnal/organizer/group?groupId="+strconv.Itoa(group.ID))
+		view = md.Link("View", "/r/chaegnal/organizer/group?groupId="+strconv.Itoa(group.ID)) + " | " + md.Link("Leave", txlink.Call("LeaveGroup", "groupId", strconv.Itoa(group.ID)))
 	} else {
 		view = "You cannot view group yet"
 	}

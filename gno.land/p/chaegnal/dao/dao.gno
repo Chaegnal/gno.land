@@ -307,3 +307,30 @@ func (dao *DAO) CloseProposal(id int, caller std.Address) {
 	closingProp.Active = false
 	dao.Proposals.Set(strconv.Itoa(id), closingProp)
 }
+
+func (dao *DAO) LeaveGroup(caller std.Address) {
+	var adminCounter int
+
+	_, ok := dao.IsMember(caller)
+	if !ok {
+		panic("Not a member.")
+	}
+
+	if dao.IsAdmin(caller) {
+		dao.Whitelist.Iterate("", "", func(_ string, val any) bool {
+			user := val.(WhitelistedUser)
+
+			if user.Rank == adminRank {
+				adminCounter++
+			}
+
+			return false
+		})
+	}
+
+	if adminCounter <= 1 {
+		panic("You are the last admin. Assign another admin before leaving.")
+	}
+
+	dao.Whitelist.Remove(caller.String())
+}
