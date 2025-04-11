@@ -65,7 +65,6 @@ func RefuseAwaitingMember(groupId string, adr std.Address) {
 }
 
 func displayPendingApproval(group organizer.FriendGroup) string {
-
 	awaiting := group.DAO.GetAwaiting()
 
 	table := mdtable.Table{
@@ -85,18 +84,76 @@ func displayPendingApproval(group organizer.FriendGroup) string {
 	return table.String()
 }
 
+func RemoveMember(groupId string, adr std.Address) {
+	group := getGroupFromId(groupId)
+
+	group.DAO.RemoveMember(organizer.AddressLoggedIn, adr)
+}
+
+func MakeAdmin(groupId string, adr std.Address) {
+	group := getGroupFromId(groupId)
+
+	group.DAO.SetAdmin(organizer.AddressLoggedIn, adr)
+}
+
+func RemoveAdminRank(groupId string, adr std.Address) {
+	group := getGroupFromId(groupId)
+
+	group.DAO.RemoveAdminRank(organizer.AddressLoggedIn, adr)
+}
+
+func displayMembers(group organizer.FriendGroup) string {
+	whitelist := group.DAO.GetWhitelisted()
+
+	table := mdtable.Table{
+		Headers: []string{"Address", "Action"},
+	}
+
+	whitelist.Iterate("", "", func(indexStr string, val any) bool {
+		var actionAdmin string
+
+		adr := std.Address(indexStr)
+		if adr == organizer.AddressLoggedIn {
+			return false
+		}
+
+		if group.DAO.IsAdmin(adr) {
+			actionAdmin = md.Link("Remove Admin", txlink.Call("RemoveAdminRank", "groupId", strconv.Itoa(group.ID), "adr", adr.String()))
+		} else {
+			actionAdmin = md.Link("Make Admin", txlink.Call("MakeAdmin", "groupId", strconv.Itoa(group.ID), "adr", adr.String()))
+		}
+
+		table.Append([]string{adr.String(),
+			actionAdmin + " | " +
+				md.Link("Kick out", txlink.Call("RemoveMember", "groupId", strconv.Itoa(group.ID), "adr", adr.String())),
+		})
+
+		return false
+	})
+
+	return table.String()
+}
+
 func displayAdminBoard(group organizer.FriendGroup) string {
 	var out string
 
 	out += md.H2("Admin Board") + "\n"
+	out += md.H3("Approval Waitlist") + "\n"
 
 	if group.DAO.GetAwaiting().Size() > 0 {
 		out += displayPendingApproval(group)
 	} else {
 		out += md.Paragraph("No member waiting for approval") + "\n"
 	}
+	out += md.HorizontalRule() + "\n"
 
-	out += md.HorizontalRule()
+	out += md.H3("Members") + "\n"
+	if group.DAO.GetWhitelisted().Size() > 1 {
+		out += displayMembers(group)
+	} else {
+		out += md.Paragraph("No member beside yourself") + "\n"
+	}
+	out += md.HorizontalRule() + "\n"
 
 	return out
 }
