@@ -130,9 +130,16 @@ func (dao *DAO) IsPending(adr std.Address) bool {
 	return true
 }
 
-func (dao *DAO) SetAdmin(adr std.Address) {
-	member, ok := dao.IsMember(adr)
+func (dao *DAO) SetAdmin(caller, adr std.Address) {
+	if !dao.IsAdmin(caller) {
+		panic("Only admins can promote members.")
+	}
 
+	dao.DefaultAdmin(adr)
+}
+
+func (dao *DAO) DefaultAdmin(adr std.Address) {
+	member, ok := dao.IsMember(adr)
 	if dao.IsAdmin(adr) {
 		panic("Member is already an admin.")
 	}
@@ -145,9 +152,12 @@ func (dao *DAO) SetAdmin(adr std.Address) {
 	dao.Whitelist.Set(adr.String(), member)
 }
 
-func (dao *DAO) RemoveAdminRank(adr std.Address) {
-	member, ok := dao.IsMember(adr)
+func (dao *DAO) RemoveAdminRank(caller, adr std.Address) {
+	if !dao.IsAdmin(caller) {
+		panic("Only admins can demote members.")
+	}
 
+	member, ok := dao.IsMember(adr)
 	if !dao.IsAdmin(adr) {
 		panic("Member is not an admin.")
 	}
