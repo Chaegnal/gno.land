@@ -9,6 +9,7 @@ import (
 	"gno.land/p/moul/txlink"
 	"gno.land/p/sunspirit/md"
 
+	"gno.land/p/chaegnal/dao"
 	"gno.land/r/chaegnal/organizer"
 )
 
@@ -134,10 +135,24 @@ func displayMembers(group organizer.FriendGroup) string {
 	return table.String()
 }
 
+func CreateProposals(groupId, title, desc, callback string, callbackArgsStr string) {
+	group := getGroupFromId(groupId)
+
+	callbackArgsStr = strings.Trim(callbackArgsStr, "\"")
+
+	callbackArgs := strings.Split(callbackArgsStr, ",")
+
+	group.DAO.CreateProposals(title, desc, callback, callbackArgs, organizer.AddressLoggedIn)
+}
+
 func displayAdminBoard(group organizer.FriendGroup) string {
 	var out string
 
 	out += md.H2("Admin Board") + "\n"
+
+	out += md.Link("Create Proposal", txlink.Call("CreateProposals",
+		"groupId", strconv.Itoa(group.ID), "title", "desc", "callback", "callbackArgs")) + "\n"
+
 	out += md.H3("Approval Waitlist") + "\n"
 
 	if group.DAO.GetAwaiting().Size() > 0 {
@@ -158,6 +173,86 @@ func displayAdminBoard(group organizer.FriendGroup) string {
 	return out
 }
 
+func VoteOnProposal(groupId string, voteIdStr string, voteStr string) {
+	group := getGroupFromId(groupId)
+
+	voteId, err := strconv.Atoi(voteIdStr)
+	if err != nil {
+		panic("Invalid vote ID")
+	}
+
+	vote, err := strconv.Atoi(voteStr)
+	if err != nil {
+		panic("Invalid vote choice")
+	}
+
+	group.DAO.VoteProposal(voteId, vote, organizer.AddressLoggedIn)
+}
+
+func displayProposals(group organizer.FriendGroup, activeOnly bool) string {
+	proposals := group.DAO.GetProposals()
+
+	table := mdtable.Table{
+		Headers: []string{"Title", "Description", "Status", "Votes", "Actions", "Result"},
+	}
+
+	proposals.Iterate("", "", func(index string, val any) bool {
+		proposal := val.(dao.Proposal)
+
+		if activeOnly != proposal.Active {
+			return false
+		}
+
+		voteYayRaw, _ := proposal.Votes.Get(strconv.Itoa(organizer.VoteYay))
+		voteNayRaw, _ := proposal.Votes.Get(strconv.Itoa(organizer.VoteNay))
+
+		yay := 0
+		nay := 0
+		if voteYayRaw != nil {
+			yay = voteYayRaw.(int)
+		}
+		if voteNayRaw != nil {
+			nay = voteNayRaw.(int)
+		}
+
+		status := "Closed"
+		if proposal.Active {
+			status = "Active"
+		}
+
+		result := "-"
+		if !proposal.Active {
+			result = proposal.Winner
+		}
+
+		voteActions := "-"
+		if proposal.Active {
+			voteActions =
+				md.Link("Yay", txlink.Call("VoteOnProposal",
+					"groupId", strconv.Itoa(group.ID),
+					"index", index,
+					"vote", strconv.Itoa(organizer.VoteYay))) + " | " +
+					md.Link("Nay", txlink.Call("VoteOnProposal",
+						"groupId", strconv.Itoa(group.ID),
+						"index", index,
+						"vote", strconv.Itoa(organizer.VoteNay)))
+		}
+
+		table.Append([]string{
+			proposal.Title,
+			proposal.Description,
+			status,
+			"Yay: " + strconv.Itoa(yay) + " / Nay: " + strconv.Itoa(nay),
+			voteActions,
+			result,
+		})
+
+		return false
+	})
+
+	return table.String()
+}
+
 func Render(url string) string {
 	var out string
 
@@ -173,9 +268,11 @@ func Render(url string) string {
 	}
 
 	out += md.H2("Active DAOs")
+	out += displayProposals(group, true)
 	out += md.HorizontalRule()
 
 	out += md.H2("Closed DAOs")
+	out += displayProposals(group, false)
 	out += md.HorizontalRule()
 
 	out += md.Paragraph(md.Link("Go back", "/r/chaegnal/organizer"))

@@ -40,6 +40,8 @@ type Activity struct {
 
 const (
 	pageSize = 5
+	VoteYay  = 1
+	VoteNay  = 0
 )
 
 var (
