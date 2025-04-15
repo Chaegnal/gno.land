@@ -308,11 +308,11 @@ func (dao *DAO) VoteProposal(voteId, choiceIdx int, caller std.Address) {
 	dao.Proposals.Set(strconv.Itoa(voteId), vote)
 
 	if dao.hasEveryoneVoted(vote) {
-		dao.CloseProposal(voteId, caller)
+		dao.closeProposal(voteId, caller)
 	}
 }
 
-func (dao *DAO) CloseProposal(id int, caller std.Address) {
+func (dao *DAO) closeProposal(id int, caller std.Address) {
 	raw, ok := dao.Proposals.Get(strconv.Itoa(id))
 	if !ok {
 		panic("Proposal does not exist.")
@@ -321,11 +321,6 @@ func (dao *DAO) CloseProposal(id int, caller std.Address) {
 	closingProp := raw.(Proposal)
 	if !closingProp.Active {
 		panic("Proposal already closed.")
-	}
-
-	ok = dao.IsAdmin(caller)
-	if !ok {
-		panic("You cannot close a proposal.")
 	}
 
 	yayVotesRaw, _ := closingProp.Votes.Get(strconv.Itoa(VoteYay))
@@ -349,6 +344,16 @@ func (dao *DAO) CloseProposal(id int, caller std.Address) {
 
 	closingProp.Active = false
 	dao.Proposals.Set(strconv.Itoa(id), closingProp)
+
+}
+
+func (dao *DAO) AdminCloseProposal(id int, caller std.Address) {
+	ok := dao.IsAdmin(caller)
+	if !ok {
+		panic("You cannot close a proposal.")
+	}
+
+	dao.closeProposal(id, caller)
 }
 
 func (dao *DAO) LeaveGroup(caller std.Address) {
