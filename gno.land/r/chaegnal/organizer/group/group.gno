@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gno.land/p/demo/avl"
 	"gno.land/p/moul/mdtable"
 	"gno.land/p/moul/txlink"
 	"gno.land/p/sunspirit/md"
@@ -100,12 +101,16 @@ func VoteOnProposal(groupId string, voteIdStr string, voteStr string) {
 
 	voteId, err := strconv.Atoi(voteIdStr)
 	if err != nil {
-		panic("Invalid vote ID")
+		panic("Invalid vote ID.")
 	}
 
 	vote, err := strconv.Atoi(voteStr)
 	if err != nil {
-		panic("Invalid vote choice")
+		panic("Invalid vote choice.")
+	}
+
+	if vote != organizer.VoteNay && vote != organizer.VoteYay {
+		panic("Vote should be Yay (1) or Nay (0).")
 	}
 
 	group.DAO.VoteProposal(voteId, vote, organizer.AddressLoggedIn)
@@ -113,9 +118,7 @@ func VoteOnProposal(groupId string, voteIdStr string, voteStr string) {
 
 // Display in a table the users awaiting approval into the group
 // Let admin directly accept or refuse members
-func displayPendingApproval(group organizer.FriendGroup) string {
-	awaiting := group.DAO.GetAwaiting()
-
+func displayPendingApproval(group organizer.FriendGroup, awaiting *avl.Tree) string {
 	table := mdtable.Table{
 		Headers: []string{"Address", "Inspect"},
 	}
@@ -135,9 +138,7 @@ func displayPendingApproval(group organizer.FriendGroup) string {
 
 // Display the group current members
 // Let the admin promote / demote / remove member
-func displayMembers(group organizer.FriendGroup) string {
-	whitelist := group.DAO.GetWhitelisted()
-
+func displayMembers(group organizer.FriendGroup, whitelist *avl.Tree) string {
 	table := mdtable.Table{
 		Headers: []string{"Address", "Action"},
 	}
@@ -179,18 +180,21 @@ func displayAdminBoard(group organizer.FriendGroup) string {
 
 	out += md.H3("Approval Waitlist") + "\n"
 
-	if group.DAO.GetAwaiting().Size() > 0 {
-		out += displayPendingApproval(group)
+	awaiting := group.DAO.GetAwaiting()
+	if awaiting.Size() > 0 {
+		out += displayPendingApproval(group, awaiting)
 	} else {
 		out += md.Paragraph("No member waiting for approval") + "\n"
 	}
 	out += md.HorizontalRule() + "\n"
 
 	out += md.H3("Members") + "\n"
-	if group.DAO.GetWhitelisted().Size() > 1 {
-		out += displayMembers(group)
+
+	whitelist := group.DAO.GetWhitelisted()
+	if whitelist.Size() > 1 {
+		out += displayMembers(group, whitelist)
 	} else {
-		out += md.Paragraph("No member beside yourself") + "\n"
+		out += md.Paragraph("You're the only member for now.") + "\n"
 	}
 	out += md.HorizontalRule() + "\n"
 
