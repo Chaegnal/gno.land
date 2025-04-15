@@ -94,6 +94,7 @@ func CreateProposals(groupId, title, desc, callback string, callbackArgsStr stri
 	group.DAO.CreateProposals(title, desc, callback, callbackArgs, organizer.AddressLoggedIn)
 }
 
+// Allows the owner to delete the friendgroup
 func DeleteFriendGroup(groupId string) {
 	group := getGroupFromId(groupId)
 
