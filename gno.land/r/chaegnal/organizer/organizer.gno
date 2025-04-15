@@ -53,13 +53,12 @@ func init() {
 	ListGroups.Groups = avl.NewTree()
 }
 
+// Create the new friendgroup with its associated DAO.
+// Set the creator as the default admin
 func CreateFriendGroup(title string) {
 	caller := std.PreviousRealm().Address()
 
-	newDao := dao.NewDAO()
-	newDao.WhitelistMember(caller)
-	newDao.DefaultAdmin(caller)
-
+	newDao := dao.NewDAO(caller)
 	newGroup := FriendGroup{
 		ID:    ListGroups.Groups.Size() + 1,
 		Title: title,
@@ -70,21 +69,9 @@ func CreateFriendGroup(title string) {
 	ListGroups.Groups.Set(strconv.Itoa(newGroup.ID), newGroup)
 }
 
-func containsValue(tree *avl.Tree, value string) bool {
-	found := false
-
-	tree.Iterate("", "", func(key string, val any) bool {
-		addr, ok := val.(std.Address)
-		if ok && addr.String() == value {
-			found = true
-			return true
-		}
-		return false
-	})
-
-	return found
-}
-
+// Triggered when a user request to join a group
+// Put the user in a waitlist until an admin let them join
+// Verify if the group exist and if the user is already a member
 func AskJoinFriendGroup(groupId int) {
 	txSender := std.OriginCaller()
 
@@ -104,13 +91,7 @@ func AskJoinFriendGroup(groupId int) {
 	ListGroups.Groups.Set(strconv.Itoa(groupId), group)
 }
 
-func displayGroupDetails(key string, value interface{}, out *string) {
-	group := value.(FriendGroup)
-
-	*out += md.Paragraph("Group Title: " + group.Title + " created by: " + group.Owner.Owner().String())
-	*out += "\n"
-}
-
+// Return the user's registered name or address
 func ResolveAddressName(addr std.Address) string {
 	user := users.ResolveAddress(addr)
 	if user != nil {
@@ -119,6 +100,27 @@ func ResolveAddressName(addr std.Address) string {
 	return addr.String()
 }
 
+// Display the joining status for each group if user is logged in
+func displayJoiningStatus(group FriendGroup) string {
+	var out string
+
+	if AddressLoggedIn != "" {
+		_, ok := group.DAO.IsMember(AddressLoggedIn)
+		if ok {
+			out += md.Paragraph("You already are part of this group")
+		} else if group.DAO.IsPending(AddressLoggedIn) {
+			out += md.Paragraph("You are awaiting approval for this group")
+		} else {
+			out += md.Link("Join Group", txlink.Call("AskJoinFriendGroup", "groupId", strconv.Itoa(group.ID))) + "\n\n"
+		}
+	}
+
+	return out
+}
+
+// Display all the existing group in a pager
+// Display primitive informations about them
+// Display joining status if logged in
 func displayAllExistingGroups(pageNumber, pageSize int) string {
 	var out string
 
@@ -142,16 +144,7 @@ func displayAllExistingGroups(pageNumber, pageSize int) string {
 		out += md.H3("Group: "+group.Title+" - By: "+author) + "\n"
 		out += md.Paragraph("Number of friends in the group: "+strconv.Itoa(group.DAO.Whitelist.Size())) + "\n"
 
-		if AddressLoggedIn != "" {
-			_, ok = group.DAO.IsMember(AddressLoggedIn)
-			if ok {
-				out += md.Paragraph("You already are part of this group")
-			} else if group.DAO.IsPending(AddressLoggedIn) {
-				out += md.Paragraph("You are awaiting approval for this group")
-			} else {
-				out += md.Link("Join Group", txlink.Call("AskJoinFriendGroup", "groupId", strconv.Itoa(group.ID))) + "\n\n"
-			}
-		}
+		out += displayJoiningStatus(group)
 
 		out += md.HorizontalRule() + "\n"
 	}
@@ -161,6 +154,7 @@ func displayAllExistingGroups(pageNumber, pageSize int) string {
 	return out
 }
 
+// Retrieve a group from a given ID
 func getGroupFromId(groupId string) FriendGroup {
 	convertedId, err := strconv.Atoi(groupId)
 	if err != nil {
@@ -175,18 +169,22 @@ func getGroupFromId(groupId string) FriendGroup {
 	return raw.(FriendGroup)
 }
 
+// Wrapper to leave a group and DAO
 func LeaveGroup(groupId string) {
 	group := getGroupFromId(groupId)
 
 	group.DAO.LeaveGroup(AddressLoggedIn)
 }
 
+// Display, in a table, the joined group and give the option to see their page or leave the group
+// Does not allow pending member to view the group
 func displayGroupInfo(group FriendGroup, table *mdtable.Table, hasJoined bool) {
 	author := ResolveAddressName(group.Owner.Owner())
 	var view string
 
 	if hasJoined {
-		view = md.Link("View", "/r/chaegnal/organizer/group?groupId="+strconv.Itoa(group.ID)) + " | " + md.Link("Leave", txlink.Call("LeaveGroup", "groupId", strconv.Itoa(group.ID)))
+		view = md.Link("View", "/r/chaegnal/organizer/group?groupId="+strconv.Itoa(group.ID)) +
+			" | " + md.Link("Leave", txlink.Call("LeaveGroup", "groupId", strconv.Itoa(group.ID)))
 	} else {
 		view = "You cannot view group yet"
 	}
@@ -224,6 +222,7 @@ func displayJoinedGroups() string {
 	return out
 }
 
+// Display the group that the user asked to join but is not yet approved
 func displayPendingApproval() string {
 	var out string
 	found := false
@@ -251,10 +250,12 @@ func displayPendingApproval() string {
 	return out
 }
 
+// Set a global var to the caller of the login function
 func Login() {
 	AddressLoggedIn = std.OriginCaller()
 }
 
+// Empties the global variable to disconnect user
 func Logout() {
 	AddressLoggedIn = ""
 }

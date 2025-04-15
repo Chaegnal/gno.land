@@ -13,6 +13,7 @@ import (
 	"gno.land/r/chaegnal/organizer"
 )
 
+// Parse the URL to retrieve the data behind the "=" sign
 func parseQuery(url string) string {
 	groupId := strings.SplitAfter(url, "?")
 	foundId := strings.SplitAfter(groupId[1], "=")
@@ -20,25 +21,8 @@ func parseQuery(url string) string {
 	return foundId[1]
 }
 
-func getGroupFromUrl(url string) organizer.FriendGroup {
-	groupId := parseQuery(url)
-	if groupId == "" {
-		panic("No groupId provided")
-	}
-
-	convertedId, err := strconv.Atoi(groupId)
-	if err != nil {
-		panic("Invalid ID")
-	}
-
-	raw, found := organizer.ListGroups.Groups.Get(strconv.Itoa(convertedId))
-	if !found {
-		panic("Could not find group")
-	}
-
-	return raw.(organizer.FriendGroup)
-}
-
+// Returns group associated with given ID
+// Verify that the ID is valid and associated with a group
 func getGroupFromId(groupId string) organizer.FriendGroup {
 	convertedId, err := strconv.Atoi(groupId)
 	if err != nil {
@@ -53,18 +37,82 @@ func getGroupFromId(groupId string) organizer.FriendGroup {
 	return raw.(organizer.FriendGroup)
 }
 
+// Retrieve the group ID from the URL
+func getGroupFromUrl(url string) organizer.FriendGroup {
+	groupId := parseQuery(url)
+	if groupId == "" {
+		panic("No groupId provided")
+	}
+
+	return getGroupFromId(groupId)
+}
+
+// Wrapper to accept new members into friendgroup and DAO
 func AcceptAwaitingMember(groupId string, adr std.Address) {
 	group := getGroupFromId(groupId)
 
 	group.DAO.WhitelistingAwaitingApproval(organizer.AddressLoggedIn, adr)
 }
 
+// Wrapper to refuse new members into friendgroup and DAO
 func RefuseAwaitingMember(groupId string, adr std.Address) {
 	group := getGroupFromId(groupId)
 
 	group.DAO.RefuseAwaitingMember(organizer.AddressLoggedIn, adr)
 }
 
+// Wrapper to remove members from group and DAO
+func RemoveMember(groupId string, adr std.Address) {
+	group := getGroupFromId(groupId)
+
+	group.DAO.RemoveMember(organizer.AddressLoggedIn, adr)
+}
+
+// Wrapper to promote member to admin status
+func MakeAdmin(groupId string, adr std.Address) {
+	group := getGroupFromId(groupId)
+
+	group.DAO.SetAdmin(organizer.AddressLoggedIn, adr)
+}
+
+// Wrapper to demote admin to member status
+func RemoveAdminRank(groupId string, adr std.Address) {
+	group := getGroupFromId(groupId)
+
+	group.DAO.RemoveAdminRank(organizer.AddressLoggedIn, adr)
+}
+
+// Wrapper to create proposal
+// Sanitizes the arguments given
+func CreateProposals(groupId, title, desc, callback string, callbackArgsStr string) {
+	group := getGroupFromId(groupId)
+
+	callbackArgsStr = strings.Trim(callbackArgsStr, "\"")
+	callbackArgs := strings.Split(callbackArgsStr, ",")
+
+	group.DAO.CreateProposals(title, desc, callback, callbackArgs, organizer.AddressLoggedIn)
+}
+
+// Wrapper to vote on proposal
+// Verify if the vote ID exist and if the vote's choice exists
+func VoteOnProposal(groupId string, voteIdStr string, voteStr string) {
+	group := getGroupFromId(groupId)
+
+	voteId, err := strconv.Atoi(voteIdStr)
+	if err != nil {
+		panic("Invalid vote ID")
+	}
+
+	vote, err := strconv.Atoi(voteStr)
+	if err != nil {
+		panic("Invalid vote choice")
+	}
+
+	group.DAO.VoteProposal(voteId, vote, organizer.AddressLoggedIn)
+}
+
+// Display in a table the users awaiting approval into the group
+// Let admin directly accept or refuse members
 func displayPendingApproval(group organizer.FriendGroup) string {
 	awaiting := group.DAO.GetAwaiting()
 
@@ -85,24 +133,8 @@ func displayPendingApproval(group organizer.FriendGroup) string {
 	return table.String()
 }
 
-func RemoveMember(groupId string, adr std.Address) {
-	group := getGroupFromId(groupId)
-
-	group.DAO.RemoveMember(organizer.AddressLoggedIn, adr)
-}
-
-func MakeAdmin(groupId string, adr std.Address) {
-	group := getGroupFromId(groupId)
-
-	group.DAO.SetAdmin(organizer.AddressLoggedIn, adr)
-}
-
-func RemoveAdminRank(groupId string, adr std.Address) {
-	group := getGroupFromId(groupId)
-
-	group.DAO.RemoveAdminRank(organizer.AddressLoggedIn, adr)
-}
-
+// Display the group current members
+// Let the admin promote / demote / remove member
 func displayMembers(group organizer.FriendGroup) string {
 	whitelist := group.DAO.GetWhitelisted()
 
@@ -135,16 +167,8 @@ func displayMembers(group organizer.FriendGroup) string {
 	return table.String()
 }
 
-func CreateProposals(groupId, title, desc, callback string, callbackArgsStr string) {
-	group := getGroupFromId(groupId)
-
-	callbackArgsStr = strings.Trim(callbackArgsStr, "\"")
-
-	callbackArgs := strings.Split(callbackArgsStr, ",")
-
-	group.DAO.CreateProposals(title, desc, callback, callbackArgs, organizer.AddressLoggedIn)
-}
-
+// Display admin board with Waitlist and Whiteliste
+// Let admins create new proposals
 func displayAdminBoard(group organizer.FriendGroup) string {
 	var out string
 
@@ -171,22 +195,6 @@ func displayAdminBoard(group organizer.FriendGroup) string {
 	out += md.HorizontalRule() + "\n"
 
 	return out
-}
-
-func VoteOnProposal(groupId string, voteIdStr string, voteStr string) {
-	group := getGroupFromId(groupId)
-
-	voteId, err := strconv.Atoi(voteIdStr)
-	if err != nil {
-		panic("Invalid vote ID")
-	}
-
-	vote, err := strconv.Atoi(voteStr)
-	if err != nil {
-		panic("Invalid vote choice")
-	}
-
-	group.DAO.VoteProposal(voteId, vote, organizer.AddressLoggedIn)
 }
 
 func displayProposals(group organizer.FriendGroup, activeOnly bool) string {
