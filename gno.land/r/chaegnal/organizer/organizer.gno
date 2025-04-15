@@ -15,6 +15,18 @@ import (
 	"gno.land/r/sys/users"
 )
 
+const (
+	pageSize = 5
+	VoteYay  = 1
+	VoteNay  = 0
+)
+
+var (
+	ListGroups      AllGroups
+	AddressLoggedIn std.Address
+	NextGroupId     = 1
+)
+
 type AllGroups struct {
 	Groups *avl.Tree
 }
@@ -26,29 +38,6 @@ type FriendGroup struct {
 	DAO   *dao.DAO
 }
 
-type Activity struct {
-	ID            int
-	Title         string
-	Description   string
-	AvailableTime []string
-	Votes         *avl.Tree
-	Participants  *avl.Tree
-	Deadline      string
-	ChosenTime    string
-	Active        bool
-}
-
-const (
-	pageSize = 5
-	VoteYay  = 1
-	VoteNay  = 0
-)
-
-var (
-	ListGroups      AllGroups
-	AddressLoggedIn std.Address
-)
-
 func init() {
 	ListGroups.Groups = avl.NewTree()
 }
@@ -56,16 +45,17 @@ func init() {
 // Create the new friendgroup with its associated DAO.
 // Set the creator as the default admin
 func CreateFriendGroup(title string) {
-	caller := std.PreviousRealm().Address()
+	caller := std.OriginCaller()
 
 	newDao := dao.NewDAO(caller)
 	newGroup := FriendGroup{
-		ID:    ListGroups.Groups.Size() + 1,
+		ID:    NextGroupId,
 		Title: title,
 		Owner: ownable.NewWithAddress(caller),
 		DAO:   newDao,
 	}
 
+	NextGroupId++
 	ListGroups.Groups.Set(strconv.Itoa(newGroup.ID), newGroup)
 }
 

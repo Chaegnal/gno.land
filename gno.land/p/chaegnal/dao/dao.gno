@@ -7,6 +7,20 @@ import (
 	"gno.land/p/demo/avl"
 )
 
+const (
+	adminRank  = "admin"
+	memberRank = "member"
+
+	whitelistFunc    = "WhitelistingAwaitingApproval"
+	refuseMemberFunc = "RefuseAwaitingMember"
+	setAdminFunc     = "SetAdmin"
+	removeAdminFunc  = "RemoveAdminRank"
+	removeMemberFunc = "RemoveMember"
+
+	VoteYay = 1
+	VoteNay = 0
+)
+
 type Proposal struct {
 	Id           int
 	Title        string
@@ -30,13 +44,6 @@ type DAO struct {
 	Whitelist        *avl.Tree
 	AwaitingApproval *avl.Tree
 }
-
-const (
-	adminRank  = "admin"
-	memberRank = "member"
-	VoteYay    = 1
-	VoteNay    = 0
-)
 
 // Create a new DAO
 // Initializes proposal, whitelist and waitlist
@@ -264,7 +271,7 @@ func (dao *DAO) CreateProposals(title, desc, callback string, callbackArgs []str
 		Active:       true,
 	}
 
-	dao.Proposals.Set(strconv.Itoa(dao.Proposals.Size()+1), newProposal)
+	dao.Proposals.Set(strconv.Itoa(newProposal.Id), newProposal)
 }
 
 // Execute a function when proposal closes if a callback was set
@@ -279,19 +286,19 @@ func (dao *DAO) ExecuteCallback(proposal Proposal) {
 	}
 
 	switch proposal.Callback {
-	case "WhitelistingAwaitingApproval":
+	case whitelistFunc:
 		dao.WhitelistingAwaitingApproval(std.Address(proposal.CallbackArgs[0]), std.Address(proposal.CallbackArgs[1]))
 
-	case "RefuseAwaitingMember":
+	case refuseMemberFunc:
 		dao.RefuseAwaitingMember(std.Address(proposal.CallbackArgs[0]), std.Address(proposal.CallbackArgs[1]))
 
-	case "SetAdmin":
+	case setAdminFunc:
 		dao.SetAdmin(std.Address(proposal.CallbackArgs[0]), std.Address(proposal.CallbackArgs[1]))
 
-	case "RemoveAdminRank":
+	case removeAdminFunc:
 		dao.RemoveAdminRank(std.Address(proposal.CallbackArgs[0]), std.Address(proposal.CallbackArgs[1]))
 
-	case "RemoveMember":
+	case removeMemberFunc:
 		dao.RemoveMember(std.Address(proposal.CallbackArgs[0]), std.Address(proposal.CallbackArgs[1]))
 
 	default:
