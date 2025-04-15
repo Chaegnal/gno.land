@@ -42,6 +42,30 @@ func init() {
 	ListGroups.Groups = avl.NewTree()
 }
 
+// Return the user's registered name or address
+func ResolveAddressName(addr std.Address) string {
+	user := users.ResolveAddress(addr)
+	if user != nil {
+		return user.Name()
+	}
+	return addr.String()
+}
+
+// Retrieve a group from a given ID
+func getGroupFromId(groupId string) FriendGroup {
+	convertedId, err := strconv.Atoi(groupId)
+	if err != nil {
+		panic("Invalid ID")
+	}
+
+	raw, found := ListGroups.Groups.Get(strconv.Itoa(convertedId))
+	if !found {
+		panic("Could not find group")
+	}
+
+	return raw.(FriendGroup)
+}
+
 // Create the new friendgroup with its associated DAO.
 // Set the creator as the default admin
 func CreateFriendGroup(title string) {
@@ -81,13 +105,25 @@ func AskJoinFriendGroup(groupId int) {
 	ListGroups.Groups.Set(strconv.Itoa(groupId), group)
 }
 
-// Return the user's registered name or address
-func ResolveAddressName(addr std.Address) string {
-	user := users.ResolveAddress(addr)
-	if user != nil {
-		return user.Name()
+// Set a global var to the caller of the login function
+func Login() {
+	AddressLoggedIn = std.OriginCaller()
+}
+
+// Empties the global variable to disconnect user
+func Logout() {
+	AddressLoggedIn = ""
+}
+
+// Wrapper to leave a group and DAO
+func LeaveGroup(groupId string) {
+	group := getGroupFromId(groupId)
+
+	if AddressLoggedIn == group.Owner.Owner() {
+		panic("Owner cannot leave the group.")
 	}
-	return addr.String()
+
+	group.DAO.LeaveDao(AddressLoggedIn)
 }
 
 // Display the joining status for each group if user is logged in
@@ -144,28 +180,6 @@ func displayAllExistingGroups(pageNumber, pageSize int) string {
 	return out
 }
 
-// Retrieve a group from a given ID
-func getGroupFromId(groupId string) FriendGroup {
-	convertedId, err := strconv.Atoi(groupId)
-	if err != nil {
-		panic("Invalid ID")
-	}
-
-	raw, found := ListGroups.Groups.Get(strconv.Itoa(convertedId))
-	if !found {
-		panic("Could not find group")
-	}
-
-	return raw.(FriendGroup)
-}
-
-// Wrapper to leave a group and DAO
-func LeaveGroup(groupId string) {
-	group := getGroupFromId(groupId)
-
-	group.DAO.LeaveGroup(AddressLoggedIn)
-}
-
 // Display, in a table, the joined group and give the option to see their page or leave the group
 // Does not allow pending member to view the group
 func displayGroupInfo(group FriendGroup, table *mdtable.Table, hasJoined bool) {
@@ -173,8 +187,11 @@ func displayGroupInfo(group FriendGroup, table *mdtable.Table, hasJoined bool) {
 	var view string
 
 	if hasJoined {
-		view = md.Link("View", "/r/chaegnal/organizer/group?groupId="+strconv.Itoa(group.ID)) +
-			" | " + md.Link("Leave", txlink.Call("LeaveGroup", "groupId", strconv.Itoa(group.ID)))
+		view = md.Link("View", "/r/chaegnal/organizer/group?groupId="+strconv.Itoa(group.ID))
+
+		if AddressLoggedIn != group.Owner.Owner() {
+			view += " | " + md.Link("Leave", txlink.Call("LeaveGroup", "groupId", strconv.Itoa(group.ID)))
+		}
 	} else {
 		view = "You cannot view group yet"
 	}
@@ -238,16 +255,6 @@ func displayPendingApproval() string {
 	}
 
 	return out
-}
-
-// Set a global var to the caller of the login function
-func Login() {
-	AddressLoggedIn = std.OriginCaller()
-}
-
-// Empties the global variable to disconnect user
-func Logout() {
-	AddressLoggedIn = ""
 }
 
 func Render(rawURL string) string {

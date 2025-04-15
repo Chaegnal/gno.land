@@ -408,7 +408,7 @@ func (dao *DAO) AdminCloseProposal(id int, caller std.Address) {
 
 // Let member leave the group
 // Bans admin from leaving if no other admin exists
-func (dao *DAO) LeaveGroup(caller std.Address) {
+func (dao *DAO) LeaveDao(caller std.Address) {
 	var adminCounter int
 
 	_, ok := dao.IsMember(caller)
