@@ -94,6 +94,16 @@ func CreateProposals(groupId, title, desc, callback string, callbackArgsStr stri
 	group.DAO.CreateProposals(title, desc, callback, callbackArgs, organizer.AddressLoggedIn)
 }
 
+func DeleteFriendGroup(groupId string) {
+	group := getGroupFromId(groupId)
+
+	if group.Owner.Owner() != organizer.AddressLoggedIn {
+		panic("Only the owner can delete the group.")
+	}
+
+	organizer.ListGroups.Groups.Remove(strconv.Itoa(group.ID))
+}
+
 // Wrapper to vote on proposal
 // Verify if the vote ID exist and if the vote's choice exists
 func VoteOnProposal(groupId string, voteIdStr string, voteStr string) {
@@ -289,5 +299,8 @@ func Render(url string) string {
 
 	out += md.Paragraph(md.Link("Go back", "/r/chaegnal/organizer"))
 
+	if group.Owner.Owner() == organizer.AddressLoggedIn {
+		out += md.Paragraph(" | " + md.Link("Delete Group", txlink.Call("DeleteFriendGroup", "groupId", strconv.Itoa(group.ID))))
+	}
 	return out
 }
