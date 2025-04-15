@@ -40,6 +40,8 @@ type Activity struct {
 
 const (
 	pageSize = 5
+	VoteYay  = 1
+	VoteNay  = 0
 )
 
 var (
@@ -147,7 +149,7 @@ func displayAllExistingGroups(pageNumber, pageSize int) string {
 			} else if group.DAO.IsPending(AddressLoggedIn) {
 				out += md.Paragraph("You are awaiting approval for this group")
 			} else {
-				out += md.Link("Join Group", txlink.Call("JoinFriendGroup", "groupId", strconv.Itoa(group.ID))) + "\n\n"
+				out += md.Link("Join Group", txlink.Call("AskJoinFriendGroup", "groupId", strconv.Itoa(group.ID))) + "\n\n"
 			}
 		}
 

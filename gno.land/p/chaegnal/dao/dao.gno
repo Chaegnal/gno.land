@@ -8,15 +8,16 @@ import (
 )
 
 type Proposal struct {
-	Id          int
-	Title       string
-	Description string
-	Owner       std.Address
-	Options     []string
-	Votes       *avl.Tree
-	Voters      *avl.Tree
-	Active      bool
-	Winner      string
+	Id           int
+	Title        string
+	Description  string
+	Owner        std.Address
+	Callback     string
+	CallbackArgs []string
+	Votes        *avl.Tree
+	Voters       *avl.Tree
+	Active       bool
+	Winner       string
 }
 
 type WhitelistedUser struct {
@@ -33,6 +34,8 @@ type DAO struct {
 const (
 	adminRank  = "admin"
 	memberRank = "member"
+	VoteYay    = 1
+	VoteNay    = 0
 )
 
 func NewDAO() *DAO {
@@ -72,12 +75,7 @@ func (dao *DAO) WhitelistingAwaitingApproval(caller, adr std.Address) {
 		panic("Already whitelisted.")
 	}
 
-	newWhitelisted := WhitelistedUser{
-		Address: adr,
-		Rank:    memberRank,
-	}
-
-	dao.Whitelist.Set(adr.String(), newWhitelisted)
+	dao.WhitelistMember(adr)
 	dao.AwaitingApproval.Remove(adr.String())
 }
 
@@ -199,23 +197,70 @@ func (dao *DAO) GetProposals() *avl.Tree {
 	return dao.Proposals
 }
 
-func (dao *DAO) CreateProposals(title, desc string, options []string, caller std.Address) {
+func (dao *DAO) CreateProposals(title, desc, callback string, callbackArgs []string, caller std.Address) {
 	if !dao.IsAdmin(caller) {
 		panic("You cannot create proposals")
 	}
 
 	newProposal := Proposal{
-		Id:          dao.Proposals.Size() + 1,
-		Title:       title,
-		Description: desc,
-		Owner:       caller,
-		Options:     options,
-		Votes:       avl.NewTree(),
-		Voters:      avl.NewTree(),
-		Active:      true,
+		Id:           dao.Proposals.Size() + 1,
+		Title:        title,
+		Description:  desc,
+		Owner:        caller,
+		Callback:     callback,
+		CallbackArgs: callbackArgs,
+		Votes:        avl.NewTree(),
+		Voters:       avl.NewTree(),
+		Active:       true,
 	}
 
 	dao.Proposals.Set(strconv.Itoa(dao.Proposals.Size()+1), newProposal)
+}
+
+func (dao *DAO) ExecuteCallback(proposal Proposal) {
+	if proposal.Callback == "" {
+		return
+	}
+
+	switch proposal.Callback {
+	case "WhitelistingAwaitingApproval":
+		if len(proposal.CallbackArgs) < 2 {
+			panic("Not enough arguments.")
+		}
+
+		dao.WhitelistingAwaitingApproval(std.Address(proposal.CallbackArgs[0]), std.Address(proposal.CallbackArgs[1]))
+
+	case "RefuseAwaitingMember":
+		if len(proposal.CallbackArgs) < 2 {
+			panic("Not enough arguments.")
+		}
+
+		dao.RefuseAwaitingMember(std.Address(proposal.CallbackArgs[0]), std.Address(proposal.CallbackArgs[1]))
+
+	case "SetAdmin":
+		if len(proposal.CallbackArgs) < 2 {
+			panic("Not enough arguments.")
+		}
+
+		dao.SetAdmin(std.Address(proposal.CallbackArgs[0]), std.Address(proposal.CallbackArgs[1]))
+
+	case "RemoveAdminRank":
+		if len(proposal.CallbackArgs) < 2 {
+			panic("Not enough arguments.")
+		}
+
+		dao.RemoveAdminRank(std.Address(proposal.CallbackArgs[0]), std.Address(proposal.CallbackArgs[1]))
+
+	case "RemoveMember":
+		if len(proposal.CallbackArgs) < 2 {
+			panic("Not enough arguments.")
+		}
+
+		dao.RemoveMember(std.Address(proposal.CallbackArgs[0]), std.Address(proposal.CallbackArgs[1]))
+
+	default:
+		panic("Unknown callback: " + proposal.Callback)
+	}
 }
 
 func (dao *DAO) hasEveryoneVoted(vote Proposal) bool {
@@ -247,12 +292,15 @@ func (dao *DAO) VoteProposal(voteId, choiceIdx int, caller std.Address) {
 		panic("Already voted.")
 	}
 
-	if choiceIdx < 0 || choiceIdx >= len(vote.Options) {
-		panic("Invalid voting choice.")
+	if choiceIdx != VoteYay && choiceIdx != VoteNay {
+		panic("Invalid vote. Must be 0 (Nay) or 1 (Yay).")
 	}
 
 	rawVote, _ := vote.Votes.Get(strconv.Itoa(choiceIdx))
-	currentVote := rawVote.(int)
+	currentVote := 0
+	if rawVote != nil {
+		currentVote = rawVote.(int)
+	}
 
 	vote.Votes.Set(strconv.Itoa(choiceIdx), currentVote+1)
 	vote.Voters.Set(caller.String(), choiceIdx)
@@ -260,14 +308,11 @@ func (dao *DAO) VoteProposal(voteId, choiceIdx int, caller std.Address) {
 	dao.Proposals.Set(strconv.Itoa(voteId), vote)
 
 	if dao.hasEveryoneVoted(vote) {
-		dao.CloseProposal(voteId, caller)
+		dao.closeProposal(voteId, caller)
 	}
 }
 
-func (dao *DAO) CloseProposal(id int, caller std.Address) {
-	var winnerVote int
-	var winnerIdx int
-
+func (dao *DAO) closeProposal(id int, caller std.Address) {
 	raw, ok := dao.Proposals.Get(strconv.Itoa(id))
 	if !ok {
 		panic("Proposal does not exist.")
@@ -278,34 +323,37 @@ func (dao *DAO) CloseProposal(id int, caller std.Address) {
 		panic("Proposal already closed.")
 	}
 
-	ok = dao.IsAdmin(caller)
-	if !ok {
-		panic("You cannot close a proposal.")
+	yayVotesRaw, _ := closingProp.Votes.Get(strconv.Itoa(VoteYay))
+	nayVotesRaw, _ := closingProp.Votes.Get(strconv.Itoa(VoteNay))
+
+	yayVotes := 0
+	if yayVotesRaw != nil {
+		yayVotes = yayVotesRaw.(int)
+	}
+	nayVotes := 0
+	if nayVotesRaw != nil {
+		nayVotes = nayVotesRaw.(int)
 	}
 
-	closingProp.Votes.Iterate("", "", func(indexStr string, val any) bool {
-		vote := val.(int)
-		index, err := strconv.Atoi(indexStr)
-		if err != nil {
-			panic("Invalid index.")
-		}
-
-		if vote > winnerVote {
-			winnerVote = vote
-			winnerIdx = index
-		}
-
-		return false
-	})
-
-	if winnerIdx >= 0 && winnerIdx < len(closingProp.Options) {
-		closingProp.Winner = closingProp.Options[winnerIdx]
+	if yayVotes > nayVotes {
+		closingProp.Winner = "yay"
+		dao.ExecuteCallback(closingProp)
 	} else {
-		closingProp.Winner = "No winner"
+		closingProp.Winner = "nay"
 	}
 
 	closingProp.Active = false
 	dao.Proposals.Set(strconv.Itoa(id), closingProp)
+
+}
+
+func (dao *DAO) AdminCloseProposal(id int, caller std.Address) {
+	ok := dao.IsAdmin(caller)
+	if !ok {
+		panic("You cannot close a proposal.")
+	}
+
+	dao.closeProposal(id, caller)
 }
 
 func (dao *DAO) LeaveGroup(caller std.Address) {
