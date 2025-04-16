@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gno.land/p/demo/avl"
+	"gno.land/p/demo/ownable"
 	"gno.land/p/moul/mdtable"
 	"gno.land/p/moul/txlink"
 	"gno.land/p/sunspirit/md"
@@ -92,6 +93,33 @@ func CreateProposals(groupId, title, desc, callback string, callbackArgsStr stri
 	callbackArgs := strings.Split(callbackArgsStr, ",")
 
 	group.DAO.CreateProposals(title, desc, callback, callbackArgs, organizer.AddressLoggedIn)
+}
+
+// Allows the owner to delete the friendgroup
+func DeleteFriendGroup(groupId string) {
+	group := getGroupFromId(groupId)
+
+	if group.Owner.Owner() != organizer.AddressLoggedIn {
+		panic("Only the owner can delete the group.")
+	}
+
+	organizer.ListGroups.Groups.Remove(strconv.Itoa(group.ID))
+}
+
+func SwitchOwner(groupId string, adr std.Address) {
+	group := getGroupFromId(groupId)
+
+	if group.Owner.Owner() != organizer.AddressLoggedIn {
+		panic("Only the owner give ownership away.")
+	}
+
+	ok := group.DAO.IsAdmin(adr)
+	if !ok {
+		panic("The new owner must be an admin")
+	}
+
+	group.Owner = ownable.NewWithAddress(adr)
+	organizer.ListGroups.Groups.Set(strconv.Itoa(group.ID), group)
 }
 
 // Wrapper to vote on proposal
@@ -289,5 +317,8 @@ func Render(url string) string {
 
 	out += md.Paragraph(md.Link("Go back", "/r/chaegnal/organizer"))
 
+	if group.Owner.Owner() == organizer.AddressLoggedIn {
+		out += md.Paragraph(" | " + md.Link("Delete Group", txlink.Call("DeleteFriendGroup", "groupId", strconv.Itoa(group.ID))))
+	}
 	return out
 }
